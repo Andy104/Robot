@@ -2,10 +2,7 @@
   ******************************************************************************
   * @file      startup_stm32f303xe.s
   * @author    MCD Application Team
-  * @version   V2.3.1
-  * @date      16-December-2016
-  * @brief     STM32F303xE devices vector table for System Workbench for STM32 
-  *             
+  * @brief     STM32F303xE devices vector table for GCC toolchain.
   *            This module performs:
   *                - Set the initial SP
   *                - Set the initial PC == Reset_Handler,
@@ -76,7 +73,7 @@ defined in linker script */
 	.weak	Reset_Handler
 	.type	Reset_Handler, %function
 Reset_Handler:
-  ldr   sp, =_estack    /* System Workbench for STM32 update: set stack pointer */
+  ldr   sp, =_estack    /* Atollic update: set stack pointer */
 
 /* Copy the data segment initializers from flash to SRAM */
   movs	r1, #0
