@@ -40,7 +40,7 @@
 #include "stm32f3xx_hal.h"
 
 /* USER CODE BEGIN Includes */
-
+#include "math.h"
 /* USER CODE END Includes */
 
 /* Private variables ---------------------------------------------------------*/
@@ -49,43 +49,33 @@ DMA_HandleTypeDef hdma_adc2;
 
 TIM_HandleTypeDef htim1;
 
+UART_HandleTypeDef huart1;
+
 /* USER CODE BEGIN PV */
 /* Private variables ---------------------------------------------------------*/
-uint16_t pomiar[2];
-uint16_t InputVals[2];
+uint32_t InputVals[2];
 float OutputVals[4];
-float sum;
-uint8_t iteracja;
+float sum1;
+float wyk;
 
-float E = 2.718281828459;
+uint8_t inputLayer;
+uint8_t hiddenLayer;
+uint8_t outputLayer;
 
-struct Layers{
-	uint8_t input;
-	uint8_t hidden;
-	uint8_t output;
-};
+float inputWeights[3][8];
+float hiddenWeights[9][4];
 
-struct Weights{
-	float input[3][8];
-	float hidden[9][4];
-};
+float inputNeurons[2];
+float hiddenNeurons[8];
+float outputNeurons[4];
 
-struct Neurons{
-	float input[2];
-	float hidden[8];
-	float output[4];
-};
-
-int8_t left;
-int8_t leftDir;
-int8_t right;
-int8_t rightDir;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_DMA_Init(void);
+static void MX_USART1_UART_Init(void);
 static void MX_TIM1_Init(void);
 static void MX_ADC2_Init(void);
                                     
@@ -94,52 +84,68 @@ void HAL_TIM_MspPostInit(TIM_HandleTypeDef *htim);
 
 /* USER CODE BEGIN PFP */
 /* Private function prototypes -----------------------------------------------*/
-float power(float base, float exp) {
-	if (exp == 0) {
-		return 1.0;
-	} else if (exp == 1) {
-		return base;
-	} else if (exp < 0) {
-		return (1.0 / base) * power(base, exp * (-1) - 1);
-	} else {
-		return (1.0 / base) * power(base, exp + 1);
-	}
-}
 
 float tansig(float value) {
-	int16_t wyk = (-2) * value;
-	return ((2 / (1 + power(E, wyk))) -1);
+	wyk = (-2.0) * value;
+	return (2.0 / (1.0 + expf(wyk))) -1.0;
 }
 
-void feedForward(struct Layers layers, struct Weights weights, struct Neurons neurons, uint16_t input[], float output[]) {
-	uint8_t j, k, l;
-	for (j = 0; j < layers.input; j++) {
-		neurons.input[j] = (1+1)*(input[j] - 1000) / (4000 - 1000) - 1;
-	}
+void feedForward(uint8_t inL, uint8_t hidL, uint8_t outL, float inW[3][8], float hidW[9][4], float inN[2], float hidN[2], float outN[2], uint32_t input[], float output[]) {
+	//uint8_t j, k, l;
 
+	inN[0] = (1.0+1.0)*(input[0] - 1000.0) / (1900.0 - 1000.0) - 1.0;
+	inN[1] = (1.0+1.0)*(input[1] - 1000.0) / (1900.0 - 1000.0) - 1.0;
+
+	sum1 = inN[0] * inW[0][0] + inN[1] * inW[1][0] + inW[2][0];
+	hidN[0] = tansig(sum1);
+	sum1 = inN[0] * inW[0][1] + inN[1] * inW[1][1] + inW[2][1];
+	hidN[1] = tansig(sum1);
+	sum1 = inN[0] * inW[0][2] + inN[1] * inW[1][2] + inW[2][2];
+	hidN[2] = tansig(sum1);
+	sum1 = inN[0] * inW[0][3] + inN[1] * inW[1][3] + inW[2][3];
+	hidN[3] = tansig(sum1);
+	sum1 = inN[0] * inW[0][4] + inN[1] * inW[1][4] + inW[2][4];
+	hidN[4] = tansig(sum1);
+	sum1 = inN[0] * inW[0][5] + inN[1] * inW[1][5] + inW[2][5];
+	hidN[5] = tansig(sum1);
+	sum1 = inN[0] * inW[0][6] + inN[1] * inW[1][6] + inW[2][6];
+	hidN[6] = tansig(sum1);
+	sum1 = inN[0] * inW[0][7] + inN[1] * inW[1][7] + inW[2][7];
+	hidN[7] = tansig(sum1);
+
+	outN[0] = hidN[0] * hidW[0][0] + hidN[1] * hidW[1][0] + hidN[2] * hidW[2][0] + hidN[3] * hidW[3][0] + hidN[4] * hidW[4][0] + hidN[5] * hidW[5][0]
+						+ hidN[6] * hidW[6][0] + hidN[7] * hidW[7][0] + hidW[8][0];
+	outN[1] = hidN[0] * hidW[0][1] + hidN[1] * hidW[1][1] + hidN[2] * hidW[2][1] + hidN[3] * hidW[3][1] + hidN[4] * hidW[4][1] + hidN[5] * hidW[5][1]
+						+ hidN[6] * hidW[6][1] + hidN[7] * hidW[7][1] + hidW[8][1];
+	outN[2] = hidN[0] * hidW[0][2] + hidN[1] * hidW[1][2] + hidN[2] * hidW[2][2] + hidN[3] * hidW[3][2] + hidN[4] * hidW[4][2] + hidN[5] * hidW[5][2]
+						+ hidN[6] * hidW[6][2] + hidN[7] * hidW[7][2] + hidW[8][2];
+	outN[3] = hidN[0] * hidW[0][3] + hidN[1] * hidW[1][3] + hidN[2] * hidW[2][3] + hidN[3] * hidW[3][3] + hidN[4] * hidW[4][3] + hidN[5] * hidW[5][3]
+						+ hidN[6] * hidW[6][3] + hidN[7] * hidW[7][3] + hidW[8][3];
+
+	output[0] = (uint32_t)round((10.0 - 5.0) * (outN[0] + 1.0) / (1.0 + 1.0) + 5.0);
+	output[1] = (uint32_t)round((10.0 - 5.0) * (outN[1] + 1.0) / (1.0 + 1.0) + 5.0);
+	output[2] = ((1.0 + 1.0) * (outN[2] + 1.0) / (1.0 + 1.0) - 1.0);
+	output[3] = ((1.0 + 1.0) * (outN[3] + 1.0) / (1.0 + 1.0) - 1.0);
+/*
 	for (l = 0; l < layers.hidden; l++) {
-		sum = 0;
-		for (j = 0; j < layers.input; j++) {
-			sum += neurons.input[j] * weights.input[j][l];
-		}
-		sum += 1 * weights.input[j+1][l];
-		neurons.hidden[l] = tansig(sum);
+		sum1 = 0;
+		for (j = 0; j < layers.input; j++) { sum1 += neurons.input[j] * weights.input[j][l]; }
+		sum1 += 1 * weights.input[j+1][l];
+		neurons.hidden[l] = tansig(sum1);
+		checkHidden[l] = neurons.hidden[l];
 	}
-
+	*/
+/*
 	for (k = 0; k < layers.output; k++) {
-		sum = 0;
-		for (j = 0; j < layers.hidden; j++) {
-			sum += neurons.hidden[j] * weights.hidden[j][k];
-		}
-		sum += 1 * weights.hidden[j+1][k];
+		sum2 = 0;
+		for (j = 0; j < layers.hidden; j++) { sum2 += neurons.hidden[j] * weights.hidden[j][k]; }
+		sum2 += 1 * weights.hidden[j+1][k];
 
-		if (k == 0 || k == 2) {
-			output[k] = (2 - 0) * (neurons.output[k] + 1) / (1 + 1) + 0;
-		}
-		if (k == 1 || k == 3) {
-			output[k] = (1 + 1) * (neurons.output[k] + 1) / (1 + 1) - 1;
-		}
+		checkOutput[k] = neurons.output[k];
+		if (k == 0 || k == 1) { output[k] = (uint32_t)((50.0 - 10.0) * (neurons.output[k] + 1.0) / (1.0 + 1.0) + 10.0); }
+		if (k == 2 || k == 3) { output[k] = (uint32_t)((1.0 + 1.0) * (neurons.output[k] + 1.0) / (1.0 + 1.0) - 1.0); }
 	}
+	*/
 }
 /* USER CODE END PFP */
 
@@ -173,64 +179,144 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_DMA_Init();
+  MX_USART1_UART_Init();
   MX_TIM1_Init();
   MX_ADC2_Init();
 
   /* USER CODE BEGIN 2 */
   HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
   HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);
-  HAL_ADC_Start_DMA(&hadc2, pomiar[2], 2);
 
-  struct Neurons neuron;
-    struct Layers layer = {2, 8, 4};
-    struct Weights weight = {
-  		  {{ -2.2262353443724119, 0.240911501250247, -7.771985610902895, -0.135920811990952, -10.958964644094142, 38.361989501327564, 19.054150135051130, 6.588522811927432 },
-  		  { -2.3124582332364492, 11.974140101969004, 41.407328218704606, 12.065838399079153, 5.832571029618378, 1.571468312227123, -31.209524873306574, -6.167941966749249 },
-  		  { 6.1316912347136343, 11.81473315018301, 14.800956804396813, 11.589835002168435, 6.4383831481577252, 19.483460284520937, 15.99047038410459, -2.0871817576418819 }},
+  HAL_ADC_Start_DMA(&hadc2, (uint32_t*)InputVals, 2);
 
-  		  {{ 0.0332948105995429, 1.03118922991245, -0.0563395212141743, 0.0838689487760870 },
-  		  { -4.14283514896582, -0.0680578448082310, -0.046413382601782, -0.068053620706070 },
-  		  { 0.004308689913784, 0.007347666907454, 0.506020624454071, 0.007348054653341 },
-  		  { 4.313373924496300, 0.063182512909129, 0.042335875246172, 0.063177555653699 },
-  		  { -0.965116013113119, -0.0005670790341832, -0.001106585549589, -0.000565684212302 },
-  		  { -0.004755527827990, -1.024101049166465, -0.512340546554027, -1.024149381049142 },
-  		  { 0.000065709634845, -0.000980268322908, -0.502208161178029, -0.000978254757323 },
-  		  { 1.003663346325185, 1.040947251050357, 0.523370722488140, 1.040995335965606 },
-  		  { 0.755945612986882, -0.017336471473698, 0.068061150656458, 0.929980775367793 }}
-    };
+  //	Budowa sieci
+  inputLayer = 2;
+  hiddenLayer = 8;
+  outputLayer = 4;
+
+  //	Wagi
+  inputWeights[0][0] =   3.97681621216933;
+  inputWeights[0][1] =  -3.43496298788826;
+  inputWeights[0][2] =   0.51806207013445;
+  inputWeights[0][3] =   0.82171043263078;
+  inputWeights[0][4] =   0.71482567750189;
+  inputWeights[0][5] =   3.13587278595063;
+  inputWeights[0][6] =  -1.13347989568598;
+  inputWeights[0][7] =   2.75103671091913;
+
+  inputWeights[1][0] =  -1.12567585837059;
+  inputWeights[1][1] =  -5.60379820912743;
+  inputWeights[1][2] =  -1.67260335217006;
+  inputWeights[1][3] =  -0.59083546705418;
+  inputWeights[1][4] =   2.04527923010639;
+  inputWeights[1][5] =   2.53399406174777;
+  inputWeights[1][6] =  -4.57620518303079;
+  inputWeights[1][7] =   1.37198169402332;
+
+  inputWeights[2][0] =  -3.51380189962795;
+  inputWeights[2][1] =   5.82953064721858;
+  inputWeights[2][2] =   0.13605362831278;
+  inputWeights[2][3] =   0.29849016329210;
+  inputWeights[2][4] =  -1.17434690710991;
+  inputWeights[2][5] =   1.96714436336079;
+  inputWeights[2][6] =  -1.62541860897994;
+  inputWeights[2][7] =   2.79152826743692;
+
+  hiddenWeights[0][0] =  -0.374539869053815;
+  hiddenWeights[0][1] =   0.005209587497091;
+  hiddenWeights[0][2] =   1.450415974891660;
+  hiddenWeights[0][3] =   1.450512795351500;
+
+  hiddenWeights[1][0] =   0.045091367937266;
+  hiddenWeights[1][1] =   0.105106685428046;
+  hiddenWeights[1][2] =  -0.730598594275543;
+  hiddenWeights[1][3] =  -0.730520130391922;
+
+  hiddenWeights[2][0] =   0.163770796582358;
+  hiddenWeights[2][1] =  -0.199147228985666;
+  hiddenWeights[2][2] =   3.122170139602460;
+  hiddenWeights[2][3] =   3.123815518815370;
+
+  hiddenWeights[3][0] =  -1.270754271837920;
+  hiddenWeights[3][1] =   0.710953002540675;
+  hiddenWeights[3][2] =  -3.389839440958070;
+  hiddenWeights[3][3] =  -3.391039100880490;
+
+  hiddenWeights[4][0] =  -0.242669899517994;
+  hiddenWeights[4][1] =  -0.646304722160610;
+  hiddenWeights[4][2] =   2.148537956459040;
+  hiddenWeights[4][3] =   2.149746437647770;
+
+  hiddenWeights[5][0] =  -0.158782162500928;
+  hiddenWeights[5][1] =  -0.146909674635699;
+  hiddenWeights[5][2] =  -0.009617146295958;
+  hiddenWeights[5][3] =  -0.008957030265926;
+
+  hiddenWeights[6][0] =   0.120545026126452;
+  hiddenWeights[6][1] =   0.269719021014171;
+  hiddenWeights[6][2] =  -0.403459385194824;
+  hiddenWeights[6][3] =  -0.403554762692929;
+
+  hiddenWeights[7][0] =   0.221448389101420;
+  hiddenWeights[7][1] =   0.086036007781647;
+  hiddenWeights[7][2] =   0.826170858432722;
+  hiddenWeights[7][3] =   0.823929019418342;
+
+  hiddenWeights[8][0] =  -0.145356096680302;
+  hiddenWeights[8][1] =  -0.346164769000769;
+  hiddenWeights[8][2] =   2.12361827932047;
+  hiddenWeights[8][3] =   2.12594115099956;
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-	  InputVals[0] = 4000;
-	  InputVals[1] = 1500;
+	  feedForward(inputLayer, hiddenLayer, outputLayer, inputWeights, hiddenWeights, inputNeurons, hiddenNeurons, outputNeurons, InputVals, OutputVals);
+	  /*
+	   * Zamienic zakresy steruj¹ce predkoscia timerow i PWM
+	   * Zakres 1-5, gdzie poziomy wynosz¹ odpowiednio: 20%, 40%, 60%, 80% i 100%, a 0 to 0%.
+	   */
 
-	  //feedForward(layer, weight, neuron, InputVals, OutputVals);
+	  TIM1->CCR1 = OutputVals[0];
+	  TIM1->CCR2 = OutputVals[1];
+	  //if (OutputVals[0] >= 10) { TIM1->CCR1 = 16; TIM1->CCR2 = 2; } else { TIM1->CCR1 = 2; TIM1->CCR2 = 16; }
 
-	  //	Test
-	  left = 10;
-	  leftDir = 1;
-	  right = 0;
-	  rightDir = 1;
+	  if (OutputVals[2] > 0) {
+		  HAL_GPIO_WritePin(GPIO_Out_Motor1_F_GPIO_Port, GPIO_Out_Motor1_F_Pin, GPIO_PIN_SET);
+		  HAL_GPIO_WritePin(GPIO_Out_Motor1_R_GPIO_Port, GPIO_Out_Motor1_R_Pin, GPIO_PIN_RESET);
+	  }
+	  else {
+		  HAL_GPIO_WritePin(GPIO_Out_Motor1_F_GPIO_Port, GPIO_Out_Motor1_F_Pin, GPIO_PIN_RESET);
+		  HAL_GPIO_WritePin(GPIO_Out_Motor1_R_GPIO_Port, GPIO_Out_Motor1_R_Pin, GPIO_PIN_SET);
+	  }
 
-	  TIM1->CCR1 = 2 * right;
-	  TIM1->CCR2 = 2 * left;
-	  HAL_GPIO_WritePin(DirLeft_GPIO_Port, DirLeft_Pin, SET);
-	  HAL_GPIO_WritePin(DirRight_GPIO_Port, DirRight_Pin, RESET);
-	  HAL_Delay(2000);
+	  if (OutputVals[3] > 0) {
+		  HAL_GPIO_WritePin(GPIO_Out_Motor2_F_GPIO_Port, GPIO_Out_Motor2_F_Pin, GPIO_PIN_SET);
+		  HAL_GPIO_WritePin(GPIO_Out_Motor2_R_GPIO_Port, GPIO_Out_Motor2_R_Pin, GPIO_PIN_RESET);
+	  }
+	  else {
+		  HAL_GPIO_WritePin(GPIO_Out_Motor2_F_GPIO_Port, GPIO_Out_Motor2_F_Pin, GPIO_PIN_RESET);
+		  HAL_GPIO_WritePin(GPIO_Out_Motor2_R_GPIO_Port, GPIO_Out_Motor2_R_Pin, GPIO_PIN_SET);
+	  }
 
-	  left = 0;
-	  leftDir = -1;
-	  right = 10;
-	  rightDir = -1;
+	  HAL_Delay(100);
 
-	  TIM1->CCR1 = 10 * right;
-	  TIM1->CCR2 = 10 * left;
-	  HAL_GPIO_WritePin(DirLeft_GPIO_Port, DirLeft_Pin, RESET);
-	  HAL_GPIO_WritePin(DirRight_GPIO_Port, DirRight_Pin, SET);
-	  HAL_Delay(2000);
+	  /*
+	  if (OutputVals[0] <= 0.5) { TIM1->CCR1 = 100; left = 0; }
+	  else if (OutputVals[0] > 0.5 && OutputVals[0] <= 1.5) { TIM1->CCR1 = 300; left = 1; }
+	  else if (OutputVals[0] > 1.5) { TIM1->CCR1 = 500; left = 2; }
+
+	  if (OutputVals[1] <= 0.5) { TIM1->CCR2 = 100; right = 0; }
+	  else if (OutputVals[1] > 0.5 && OutputVals[2] <= 1.5) { TIM1->CCR2 = 300; right = 1; }
+	  else if (OutputVals[1] > 1.5) { TIM1->CCR2 = 500; right = 2; }
+
+	  if (OutputVals[2] <= 0.0) { HAL_GPIO_WritePin(GPIO_Out_Motor1_GPIO_Port, GPIO_Out_Motor1_Pin, GPIO_PIN_SET); leftDir = 1; }
+	  else if (OutputVals[2] > 0.0) { HAL_GPIO_WritePin(GPIO_Out_Motor1_GPIO_Port, GPIO_Out_Motor1_Pin, GPIO_PIN_RESET); leftDir = 0; }
+
+	  if (OutputVals[3] <= 0.0) { HAL_GPIO_WritePin(GPIO_Out_Motor2_GPIO_Port, GPIO_Out_Motor2_Pin, GPIO_PIN_SET); rightDir = 1; }
+	  else if (OutputVals[3] > 0.0 ) { HAL_GPIO_WritePin(GPIO_Out_Motor2_GPIO_Port, GPIO_Out_Motor2_Pin, GPIO_PIN_RESET); rightDir = 0; }
+	  */
   /* USER CODE END WHILE */
 
   /* USER CODE BEGIN 3 */
@@ -277,7 +363,8 @@ void SystemClock_Config(void)
     _Error_Handler(__FILE__, __LINE__);
   }
 
-  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_TIM1;
+  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_USART1|RCC_PERIPHCLK_TIM1;
+  PeriphClkInit.Usart1ClockSelection = RCC_USART1CLKSOURCE_PCLK2;
   PeriphClkInit.Tim1ClockSelection = RCC_TIM1CLK_HCLK;
   if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK)
   {
@@ -357,9 +444,9 @@ static void MX_TIM1_Init(void)
   TIM_BreakDeadTimeConfigTypeDef sBreakDeadTimeConfig;
 
   htim1.Instance = TIM1;
-  htim1.Init.Prescaler = 7199;
+  htim1.Init.Prescaler = 3599;
   htim1.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim1.Init.Period = 99;
+  htim1.Init.Period = 9;
   htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim1.Init.RepetitionCounter = 0;
   htim1.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
@@ -424,6 +511,27 @@ static void MX_TIM1_Init(void)
 
 }
 
+/* USART1 init function */
+static void MX_USART1_UART_Init(void)
+{
+
+  huart1.Instance = USART1;
+  huart1.Init.BaudRate = 9600;
+  huart1.Init.WordLength = UART_WORDLENGTH_8B;
+  huart1.Init.StopBits = UART_STOPBITS_1;
+  huart1.Init.Parity = UART_PARITY_NONE;
+  huart1.Init.Mode = UART_MODE_TX_RX;
+  huart1.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart1.Init.OverSampling = UART_OVERSAMPLING_16;
+  huart1.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
+  huart1.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
+  if (HAL_UART_Init(&huart1) != HAL_OK)
+  {
+    _Error_Handler(__FILE__, __LINE__);
+  }
+
+}
+
 /** 
   * Enable DMA controller clock
   */
@@ -433,9 +541,9 @@ static void MX_DMA_Init(void)
   __HAL_RCC_DMA2_CLK_ENABLE();
 
   /* DMA interrupt init */
-  /* DMA2_Channel3_IRQn interrupt configuration */
-  HAL_NVIC_SetPriority(DMA2_Channel3_IRQn, 0, 0);
-  HAL_NVIC_EnableIRQ(DMA2_Channel3_IRQn);
+  /* DMA2_Channel1_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA2_Channel1_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA2_Channel1_IRQn);
 
 }
 
@@ -460,7 +568,10 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOA, DirLeft_Pin|DirRight_Pin|LD2_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOA, GPIO_Out_Motor1_R_Pin|GPIO_Out_Motor1_F_Pin|GPIO_Out_Motor2_R_Pin|LD2_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIO_Out_Motor2_F_GPIO_Port, GPIO_Out_Motor2_F_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin : B1_Pin */
   GPIO_InitStruct.Pin = B1_Pin;
@@ -468,8 +579,8 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(B1_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : DirLeft_Pin DirRight_Pin LD2_Pin */
-  GPIO_InitStruct.Pin = DirLeft_Pin|DirRight_Pin|LD2_Pin;
+  /*Configure GPIO pins : GPIO_Out_Motor1_R_Pin GPIO_Out_Motor1_F_Pin GPIO_Out_Motor2_R_Pin LD2_Pin */
+  GPIO_InitStruct.Pin = GPIO_Out_Motor1_R_Pin|GPIO_Out_Motor1_F_Pin|GPIO_Out_Motor2_R_Pin|LD2_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
@@ -482,6 +593,13 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   GPIO_InitStruct.Alternate = GPIO_AF7_USART2;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : GPIO_Out_Motor2_F_Pin */
+  GPIO_InitStruct.Pin = GPIO_Out_Motor2_F_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIO_Out_Motor2_F_GPIO_Port, &GPIO_InitStruct);
 
 }
 
